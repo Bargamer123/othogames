@@ -1,0 +1,50 @@
+// ============================================================
+// Firebase setup — configured for randomgames-72fea
+// This config is safe to publish; security lives in your
+// database rules, not in hiding these values.
+// ============================================================
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getDatabase, ref, set, get, update, onValue, onDisconnect, remove,
+  serverTimestamp, child, push,
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAYZpfzGiUBNz0jEIgtNaGXMX42pNxB_7M",
+  authDomain: "randomgames-72fea.firebaseapp.com",
+  databaseURL: "https://randomgames-72fea-default-rtdb.firebaseio.com",
+  projectId: "randomgames-72fea",
+  storageBucket: "randomgames-72fea.firebasestorage.app",
+  messagingSenderId: "547358741664",
+  appId: "1:547358741664:web:60e2fb586f742a2f6c65c5",
+  measurementId: "G-8LMVLY610S"
+};
+
+export const configLooksReal =
+  !firebaseConfig.apiKey.startsWith("PASTE_") &&
+  firebaseConfig.databaseURL.startsWith("https://") &&
+  !firebaseConfig.databaseURL.includes("PASTE_");
+
+let db = null;
+if (configLooksReal) {
+  const app = initializeApp(firebaseConfig);
+  db = getDatabase(app);
+}
+
+export { db, ref, set, get, update, onValue, onDisconnect, remove, serverTimestamp, child, push };
+
+export function roomRef(code, path = "") {
+  return ref(db, `rooms/${code}${path ? "/" + path : ""}`);
+}
+
+// Show a friendly banner if the config hasn't been pasted in yet
+export function warnIfUnconfigured() {
+  if (configLooksReal) return false;
+  const el = document.createElement("div");
+  el.className = "error-banner";
+  el.textContent =
+    "Firebase isn't configured yet. Open js/firebase.js and paste in your project's config object (Firebase console → Project settings → Your apps).";
+  document.body.prepend(el);
+  return true;
+}

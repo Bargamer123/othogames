@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Play — Do You Know Me?!</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <button class="home-btn" id="homeBtn" aria-label="Leave and go home" title="Leave and go home">🏠</button>
+  <main class="wrap wrap--narrow">
+    <div class="center" style="margin-bottom: 12px;">
+      <span class="pill" id="mePill" style="display:none;"></span>
+    </div>
+
+    <!-- JOIN ERROR -->
+    <section id="view-error" class="hidden">
+      <div class="card card--stage">
+        <h2 id="errorMsg">Something went wrong</h2>
+        <div class="btn-row mt"><a class="btn btn--ghost" href="index.html">Back to start</a></div>
+      </div>
+    </section>
+
+    <!-- LOBBY -->
+    <section id="view-lobby" class="hidden">
+      <div class="card card--stage">
+        <h2>You're in! 🎉</h2>
+        <p>Keep this page open. The game starts on the big screen.</p>
+        <div class="btn-row mt">
+          <button class="btn btn--ghost" id="leaveBtn">Leave lobby</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- WAITING (someone else's turn to act) -->
+    <section id="view-waiting" class="hidden">
+      <div class="card card--stage">
+        <h2 id="waitTitle"></h2>
+        <p id="waitBody"></p>
+      </div>
+    </section>
+
+    <!-- SLIDER (answer or guess) -->
+    <section id="view-slider" class="hidden">
+      <div class="card card--stage">
+        <span class="pill" id="sliderPill"></span>
+        <h2 class="question" id="sliderQuestion"></h2>
+        <div class="spectrum-labels"><span id="sliderLeft"></span><span id="sliderRight"></span></div>
+        <input type="range" class="guess" id="slider" min="0" max="100" value="50"
+               aria-label="Your answer on the scale" />
+        <div class="btn-row mt">
+          <button class="btn btn--coral btn--big" id="lockBtn">Lock it in</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- REVEAL -->
+    <section id="view-reveal" class="hidden">
+      <div class="card card--stage">
+        <h2 id="revealTitle"></h2>
+        <div class="big-points" id="revealPoints"></div>
+        <p id="revealBody">Check the big screen for the full story!</p>
+      </div>
+    </section>
+
+    <!-- FINAL -->
+    <section id="view-final" class="hidden">
+      <div class="card card--stage">
+        <h2 id="finalTitle"></h2>
+        <div class="big-points" id="finalScore"></div>
+        <p>Thanks for playing!</p>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="js/player.js"></script>
+</body>
+</html>

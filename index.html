@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Do You Know Me?!</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <main class="wrap wrap--narrow">
+    <h1 class="logo">Do You <span class="tilt">Know</span> Me?!</h1>
+    <p class="tagline">The party quiz where your friends prove how well they know you.</p>
+
+    <div class="card card--stage" id="hostCard">
+      <h2>Start a party</h2>
+      <p>One screen hosts the game. Everyone joins in their own browser — laptop, tablet, or phone. The host can play too!</p>
+      <button class="btn btn--coral btn--big" id="hostBtn">Host a game</button>
+    </div>
+
+    <div class="card" id="joinCard">
+      <h2>Join a game</h2>
+      <label for="joinCode">Room code</label>
+      <input type="text" id="joinCode" class="code-input" maxlength="4" autocomplete="off"
+             inputmode="latin" placeholder="ABCD" />
+      <label for="joinName">Your name</label>
+      <input type="text" id="joinName" maxlength="12" autocomplete="off" placeholder="e.g. Sam" />
+      <label>Pick your character</label>
+      <div class="icon-grid" id="iconGrid"></div>
+      <div class="mt center">
+        <button class="btn btn--aqua btn--big" id="joinBtn">Join the game</button>
+      </div>
+    </div>
+  </main>
+
+  <script type="module">
+    import { warnIfUnconfigured } from "./js/firebase.js";
+    import { FACES, avatarDataURI } from "./js/util.js";
+    warnIfUnconfigured();
+
+    document.getElementById("hostBtn").addEventListener("click", () => {
+      window.location.href = "host.html";
+    });
+
+    const codeEl = document.getElementById("joinCode");
+    const nameEl = document.getElementById("joinName");
+    const grid = document.getElementById("iconGrid");
+
+    // character picker
+    let selectedFace = Math.floor(Math.random() * FACES.length);
+    FACES.forEach((f, i) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "icon-btn";
+      b.title = f.name;
+      b.setAttribute("aria-label", f.name);
+      b.innerHTML = `<img src="${avatarDataURI(i % 10, i)}" alt="" />`;
+      b.addEventListener("click", () => {
+        selectedFace = i;
+        grid.querySelectorAll(".icon-btn").forEach((x) => x.classList.remove("selected"));
+        b.classList.add("selected");
+      });
+      grid.appendChild(b);
+    });
+    grid.children[selectedFace].classList.add("selected");
+
+    // host "join as a player" links here with ?code=XXXX pre-filled
+    const preCode = new URLSearchParams(location.search).get("code");
+    if (preCode) {
+      codeEl.value = preCode.toUpperCase();
+      document.getElementById("hostCard").classList.add("hidden");
+      nameEl.focus();
+    }
+
+    function join() {
+      const code = codeEl.value.trim().toUpperCase();
+      const name = nameEl.value.trim();
+      if (code.length !== 4) { codeEl.focus(); return; }
+      if (!name) { nameEl.focus(); return; }
+      sessionStorage.setItem("dykm_join_name", name);
+      sessionStorage.setItem("dykm_join_face", String(selectedFace));
+      window.location.href = `player.html?code=${encodeURIComponent(code)}`;
+    }
+
+    document.getElementById("joinBtn").addEventListener("click", join);
+    nameEl.addEventListener("keydown", (e) => { if (e.key === "Enter") join(); });
+  </script>
+</body>
+</html>
