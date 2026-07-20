@@ -8,7 +8,10 @@ import {
   roomRef, get, set, update, onValue, onDisconnect, remove, warnIfUnconfigured,
 } from "./firebase.js";
 import { QUESTIONS } from "./questions.js";
-import { avatarDataURI, PLAYER_COLORS, FACES, escapeHTML } from "./util.js";
+import {
+  avatarDataURI, PLAYER_COLORS, FACES, escapeHTML,
+  revealSpectrumHTML, resultRowsHTML, standingsHTML,
+} from "./util.js";
 import { sfx, unlockAudio } from "./sounds.js";
 
 if (warnIfUnconfigured()) throw new Error("Firebase not configured");
@@ -99,6 +102,8 @@ function render() {
   const isSpot = room.spotlight === PID;
   const q = QUESTIONS[room.qIndex];
   const spotName = room.players?.[room.spotlight]?.name || "Someone";
+  const goal = room.settings?.goal ?? Infinity;
+  const totalRounds = room.settings?.rounds ?? room.order?.length ?? 0;
 
   if (st === "lobby") return showView("lobby");
 
@@ -119,21 +124,33 @@ function render() {
 
   if (st === "reveal") {
     const r = room.lastResult;
-    if (!r) return showWaiting("Results…", "Look at the big screen!");
+    if (!r) return showWaiting("Results…", "Coming up!");
+    const q = QUESTIONS[r.qIndex];
+    const cleanPlayers = {};
+    for (const [id, p] of Object.entries(room.players || {})) if (p && p.name) cleanPlayers[id] = p;
+
+    $("roundPillR").textContent = `Round ${r.round} of ${totalRounds} — the truth!`;
+    $("revealTitle").textContent = q.q;
+    $("leftR").textContent = q.left;
+    $("rightR").textContent = q.right;
+
+    // personal "you earned" banner
     if (r.spotlight === PID) {
-      $("revealTitle").textContent = "How well do they know you?";
-      $("revealPoints").textContent = `+${r.spotlightBonus}`;
-      $("revealBody").textContent = r.spotlightBonus > 0
-        ? "Your friends came through! Bonus points for being knowable."
-        : "Wow. Nobody got close. Mysterious!";
+      $("myEarnBanner").innerHTML =
+        `<div class="big-points">+${r.spotlightBonus}</div>
+         <p style="font-weight:800;margin:0;">${r.spotlightBonus > 0 ? "Your friends really know you! 🎯" : "Nobody guessed close — you're a mystery!"}</p>`;
     } else {
       const g = r.guesses?.[PID];
-      $("revealTitle").textContent = g ? "Your guess earned…" : "No guess this round";
-      $("revealPoints").textContent = g ? `+${g.points}` : "+0";
-      $("revealBody").textContent = g && g.points >= 75
-        ? "You really know them! 🎯"
-        : "Check the big screen for the full story!";
+      const pts = g ? g.points : 0;
+      $("myEarnBanner").innerHTML =
+        `<div class="big-points">+${pts}</div>
+         <p style="font-weight:800;margin:0;">${pts >= 75 ? "Bullseye! You really know them 🎯" : pts > 0 ? "Not bad!" : "Oof — way off this time!"}</p>`;
     }
+
+    $("revealSpectrum").innerHTML = revealSpectrumHTML(r, cleanPlayers);
+    $("revealResults").innerHTML = resultRowsHTML(r, cleanPlayers, PID);
+    $("standingsHeadR").textContent = `Standings · first to ${goal} wins`;
+    $("revealStandings").innerHTML = standingsHTML(cleanPlayers, goal, PID);
     return showView("reveal");
   }
 

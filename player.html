@@ -57,12 +57,20 @@
       </div>
     </section>
 
-    <!-- REVEAL -->
+    <!-- REVEAL (full results, same as host) -->
     <section id="view-reveal" class="hidden">
       <div class="card card--stage">
+        <span class="pill" id="roundPillR"></span>
         <h2 id="revealTitle"></h2>
-        <div class="big-points" id="revealPoints"></div>
-        <p id="revealBody">Check the big screen for the full story!</p>
+        <div id="myEarnBanner" class="my-earn"></div>
+        <div class="spectrum-block">
+          <div class="spectrum-labels"><span id="leftR"></span><span id="rightR"></span></div>
+          <div class="spectrum" id="revealSpectrum" style="height: 30px;"></div>
+        </div>
+        <div id="revealResults" class="mt" style="text-align:left;"></div>
+        <h3 class="mt center" id="standingsHeadR"></h3>
+        <div id="revealStandings" style="text-align:left;"></div>
+        <p class="status" style="color:var(--ink-soft);margin-top:14px;">Waiting for the host to continue<span class="wait-dots"></span></p>
       </div>
     </section>
 

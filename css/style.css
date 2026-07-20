@@ -496,3 +496,21 @@ input[type="range"].setting-range:focus-visible { outline: 3px dashed var(--viol
 
 .chip .kick:hover { transform: scale(1.1); }
 .chip .kick:focus-visible { outline: 3px dashed var(--violet); outline-offset: 2px; }
+
+/* ---------- personal "you earned" banner + result highlights ---------- */
+.my-earn {
+  background: var(--card-edge);
+  border: 3px solid var(--ink);
+  border-radius: 16px;
+  padding: 12px;
+  margin: 6px 0 16px;
+}
+.my-earn .big-points { margin: 0; }
+
+.result-row--me,
+.standing--me {
+  background: rgba(255, 197, 61, 0.28);
+  border-radius: 10px;
+  padding-left: 6px;
+  padding-right: 6px;
+}

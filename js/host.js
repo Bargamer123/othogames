@@ -1,56 +1,115 @@
 // ============================================================
-// Host logic. The host page is the referee: it creates the room,
-// advances the game state, tallies scores. Player devices only
-// write their own answers. Everything syncs through rooms/{CODE}.
+// Host logic. The host is BOTH the referee (advances state,
+// tallies scores) AND a player (has a name, character, plays
+// inline). Everything syncs through rooms/{CODE}.
 // ============================================================
 
 import {
-  db, roomRef, ref, set, get, update, onValue, remove, warnIfUnconfigured,
+  db, roomRef, ref, set, get, update, onValue, onDisconnect, remove, warnIfUnconfigured,
 } from "./firebase.js";
 import { QUESTIONS } from "./questions.js";
 import {
-  avatarDataURI, randomCode, scoreGuess, SPOTLIGHT_BONUS_PER_HIT, escapeHTML,
+  avatarDataURI, PLAYER_COLORS, FACES, randomCode, scoreGuess,
+  SPOTLIGHT_BONUS_PER_HIT, escapeHTML,
+  revealSpectrumHTML, resultRowsHTML, standingsHTML,
 } from "./util.js";
 import { sfx, setMuted, isMuted, unlockAudio } from "./sounds.js";
 
 if (warnIfUnconfigured()) throw new Error("Firebase not configured");
 
 const $ = (id) => document.getElementById(id);
-const views = ["lobby", "answering", "guessing", "reveal", "final"];
+const views = ["setup", "lobby", "answering", "guessing", "reveal", "final"];
 
 let CODE = null;
-let room = null;          // latest room snapshot
-let busy = false;         // guards state transitions
-let prevState = null;     // for sound cues
+let PID = null;           // the host is also a player
+let room = null;
+let busy = false;
+let prevState = null;
 let prevPlayerCount = 0;
+let lockedRound = -1;     // which round the host has already answered/guessed
+let selectedFace = Math.floor(Math.random() * FACES.length);
 
-// ---------- boot: resume an existing room or create a new one ----------
+function showView(name) {
+  views.forEach((v) => $(`view-${v}`).classList.toggle("hidden", v !== name));
+}
+
+// ---------- boot ----------
 (async function boot() {
   const urlCode = new URLSearchParams(location.search).get("code");
-  const saved = sessionStorage.getItem("dykm_host_code");
-  const candidate = (urlCode || saved || "").toUpperCase();
+  const savedCode = sessionStorage.getItem("dykm_host_code");
+  const savedPid = sessionStorage.getItem("dykm_host_pid");
+  const candidate = (urlCode || savedCode || "").toUpperCase();
 
-  if (candidate) {
+  // resuming an existing hosted room in the same session
+  if (candidate && savedPid) {
     const snap = await get(roomRef(candidate));
-    if (snap.exists()) { CODE = candidate; }
-  }
-  if (!CODE) {
-    for (let i = 0; i < 20 && !CODE; i++) {
-      const c = randomCode();
-      const snap = await get(roomRef(c));
-      if (!snap.exists()) CODE = c;
+    if (snap.exists() && snap.val().players?.[savedPid]) {
+      CODE = candidate; PID = savedPid;
+      await update(roomRef(CODE, `players/${PID}`), { connected: true });
+      afterJoin();
+      return;
     }
-    await set(roomRef(CODE), {
-      state: "lobby",
-      createdAt: Date.now(),
-      round: 0,
-    });
   }
-  sessionStorage.setItem("dykm_host_code", CODE);
-  history.replaceState(null, "", `host.html?code=${CODE}`);
 
+  // otherwise show setup (pick name + character) and wait for "Create the room"
+  buildIconPicker();
+  showView("setup");
+})();
+
+function buildIconPicker() {
+  const grid = $("hostIconGrid");
+  grid.innerHTML = "";
+  FACES.forEach((f, i) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "icon-btn";
+    b.title = f.name;
+    b.setAttribute("aria-label", f.name);
+    b.innerHTML = `<img src="${avatarDataURI(i % 10, i)}" alt="" />`;
+    b.addEventListener("click", () => {
+      selectedFace = i;
+      grid.querySelectorAll(".icon-btn").forEach((x) => x.classList.remove("selected"));
+      b.classList.add("selected");
+    });
+    grid.appendChild(b);
+  });
+  grid.children[selectedFace].classList.add("selected");
+}
+
+$("createBtn").addEventListener("click", async () => {
+  unlockAudio();
+  const name = ($("hostName").value.trim() || "Host").slice(0, 12);
+
+  // find an unused room code
+  for (let i = 0; i < 20 && !CODE; i++) {
+    const c = randomCode();
+    const snap = await get(roomRef(c));
+    if (!snap.exists()) CODE = c;
+  }
+  if (!CODE) CODE = randomCode();
+
+  PID = "h" + Math.random().toString(36).slice(2, 9);
+  await set(roomRef(CODE), { state: "lobby", createdAt: Date.now(), round: 0, host: PID });
+  await set(roomRef(CODE, `players/${PID}`), {
+    name, color: 0, face: selectedFace, score: 0, connected: true, joinedAt: Date.now(), isHost: true,
+  });
+
+  sessionStorage.setItem("dykm_host_code", CODE);
+  sessionStorage.setItem("dykm_host_pid", PID);
+  afterJoin();
+});
+
+function afterJoin() {
+  history.replaceState(null, "", `host.html?code=${CODE}`);
   $("roomCode").textContent = CODE;
   $("joinURL").textContent = location.origin + location.pathname.replace(/host\.html$/, "");
+
+  onDisconnect(roomRef(CODE, `players/${PID}/connected`)).set(false);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && PID) {
+      update(roomRef(CODE, `players/${PID}`), { connected: true });
+    }
+  });
 
   onValue(roomRef(CODE), (snap) => {
     room = snap.val();
@@ -59,7 +118,7 @@ let prevPlayerCount = 0;
     render();
     referee();
   });
-})();
+}
 
 // ---------- helpers ----------
 function players() {
@@ -74,27 +133,19 @@ function spotlight() { return players()[room.spotlight]; }
 function question() { return QUESTIONS[room.qIndex]; }
 function totalRounds() { return room.settings?.rounds ?? room.order?.length ?? 0; }
 function pointsGoal() { return room.settings?.goal ?? Infinity; }
-function goalReached() {
-  return playerIds().some((id) => (players()[id].score ?? 0) >= pointsGoal());
-}
+function goalReached() { return playerIds().some((id) => (players()[id].score ?? 0) >= pointsGoal()); }
 function gameOverNext() { return room.round >= totalRounds() || goalReached(); }
-
-function showView(name) {
-  views.forEach((v) => $(`view-${v}`).classList.toggle("hidden", v !== name));
-}
+function me() { return players()[PID]; }
 
 function chipHTML(p, withScore = true, kickId = null) {
   return `<div class="chip ${p.connected ? "" : "chip--offline"}">
     <img class="avatar" src="${avatarDataURI(p.color, p.face)}" alt="" />
-    <span>${escapeHTML(p.name)}</span>
+    <span>${escapeHTML(p.name)}${p.isHost ? " 👑" : ""}</span>
     ${withScore ? `<span class="pts">${p.score ?? 0}</span>` : ""}
     ${kickId ? `<button class="kick" data-pid="${kickId}" title="Remove ${escapeHTML(p.name)}" aria-label="Remove ${escapeHTML(p.name)}">✕</button>` : ""}
   </div>`;
 }
-
-function scoreboardHTML() {
-  return playerIds().map((id) => chipHTML(players()[id])).join("");
-}
+function scoreboardHTML() { return playerIds().map((id) => chipHTML(players()[id])).join(""); }
 
 function shuffle(arr) {
   const a = [...arr];
@@ -104,14 +155,31 @@ function shuffle(arr) {
   }
   return a;
 }
-
 function pickQuestion(used) {
   const unused = QUESTIONS.map((_, i) => i).filter((i) => !used.includes(i));
   const pool = unused.length ? unused : QUESTIONS.map((_, i) => i);
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-// ---------- sound cues on state changes ----------
+function personalize(text) {
+  const out = text
+    .replace(/\bare they\b/gi, "are you").replace(/\bdo they\b/gi, "do you")
+    .replace(/\bcould they\b/gi, "could you").replace(/\bwould they\b/gi, "would you")
+    .replace(/\bthey like\b/gi, "you like").replace(/\btheir\b/gi, "your")
+    .replace(/\bthey\b/gi, "you").replace(/\bthem\b/gi, "you");
+  return out.charAt(0).toUpperCase() + out.slice(1);
+}
+
+function setThumb(sliderId) {
+  const uri = avatarDataURI(me().color, me().face);
+  let styleEl = $("thumbStyle");
+  if (!styleEl) { styleEl = document.createElement("style"); styleEl.id = "thumbStyle"; document.head.appendChild(styleEl); }
+  styleEl.textContent =
+    `input[type="range"].guess::-webkit-slider-thumb{background-image:url("${uri}");}
+     input[type="range"].guess::-moz-range-thumb{background-image:url("${uri}");}`;
+}
+
+// ---------- sound cues ----------
 function soundCues() {
   const st = room.state;
   const count = playerIds().length;
@@ -128,15 +196,18 @@ function soundCues() {
 
 // ---------- rendering ----------
 function render() {
+  if (!PID || !me()) return; // still in setup, or removed
   const st = room.state;
   showView(st === "final" ? "final" : st);
+
+  const isSpot = room.spotlight === PID;
 
   if (st === "lobby") {
     const ids = playerIds();
     $("playerCount").textContent = ids.length ? `(${ids.length}/10)` : "";
     $("lobbyPlayers").innerHTML = ids.length
-      ? ids.map((id) => chipHTML(players()[id], false, id)).join("")
-      : `<p class="center" style="color:var(--ink-soft);font-weight:800;">No one yet — send everyone the code!</p>`;
+      ? ids.map((id) => chipHTML(players()[id], false, id === PID ? null : id)).join("")
+      : `<p class="center" style="color:var(--ink-soft);font-weight:800;">Just you so far — send everyone the code!</p>`;
     const enough = connectedIds().length >= 2;
     $("startBtn").disabled = !enough;
     $("startBtn").textContent = enough ? "Start the game!" : "Waiting for players…";
@@ -146,30 +217,54 @@ function render() {
     $("roundPillA").textContent = `Round ${room.round} of ${totalRounds()} · first to ${pointsGoal()} wins`;
     $("spotlightIntroA").innerHTML =
       `<img class="avatar avatar--big" src="${avatarDataURI(spotlight().color, spotlight().face)}" alt="" />
-       <div class="display" style="font-size:1.3rem;">${escapeHTML(spotlight().name)} is in the spotlight!</div>`;
-    $("questionA").textContent = question().q;
+       <div class="display" style="font-size:1.3rem;">${escapeHTML(spotlight().name)}${isSpot ? " (you)" : ""} is in the spotlight!</div>`;
+    const answered = room.answers?.spotlight != null;
+    // host is the spotlight and hasn't answered → show their slider
+    if (isSpot && !answered && lockedRound !== room.round) {
+      $("questionA").textContent = personalize(question().q);
+      $("hostSliderA").classList.remove("hidden");
+      $("hostSpectrumA").classList.add("hidden");
+      $("answerWait").textContent = "Answer honestly — everyone will guess where you land!";
+      setThumb("sliderA");
+    } else {
+      $("questionA").textContent = question().q;
+      $("hostSliderA").classList.add("hidden");
+      $("hostSpectrumA").classList.remove("hidden");
+      $("answerWait").innerHTML = isSpot
+        ? "Your answer's locked! Now everyone guesses<span class='wait-dots'></span>"
+        : `${escapeHTML(spotlight().name)} is answering secretly<span class="wait-dots"></span>`;
+    }
     $("leftA").textContent = question().left;
     $("rightA").textContent = question().right;
-    $("answerWait").innerHTML =
-      `${escapeHTML(spotlight().name)} is answering secretly on their device<span class="wait-dots"></span>`;
     $("scoreboardA").innerHTML = scoreboardHTML();
   }
 
   if (st === "guessing" && spotlight()) {
     $("roundPillG").textContent = `Round ${room.round} of ${totalRounds()}`;
-    $("questionG").textContent = `How well do you know ${spotlight().name}? ${question().q}`;
     $("leftG").textContent = question().left;
     $("rightG").textContent = question().right;
     const guessers = connectedIds().filter((id) => id !== room.spotlight);
     const got = Object.keys(room.answers?.guesses || {}).filter((id) => guessers.includes(id));
-    $("guessProgress").innerHTML =
-      `${got.length} of ${guessers.length} guesses in<span class="wait-dots"></span>`;
+    const iGuessed = room.answers?.guesses?.[PID] != null || lockedRound === room.round;
+    // host guesses too (unless host is the spotlight)
+    if (!isSpot && !iGuessed) {
+      $("questionG").textContent = `What did ${spotlight().name} say? ${question().q}`;
+      $("hostSliderG").classList.remove("hidden");
+      $("hostSpectrumG").classList.add("hidden");
+      setThumb("sliderG");
+    } else {
+      $("questionG").textContent = `How well does everyone know ${spotlight().name}? ${question().q}`;
+      $("hostSliderG").classList.add("hidden");
+      $("hostSpectrumG").classList.remove("hidden");
+    }
+    $("guessProgress").innerHTML = `${got.length} of ${guessers.length} guesses in<span class="wait-dots"></span>`;
     $("scoreboardG").innerHTML = scoreboardHTML();
   }
 
   if (st === "reveal" && room.lastResult) renderReveal();
-
-  if (st === "final") renderStandings("finalStandings");
+  if (st === "final") {
+    $("finalStandings").innerHTML = standingsHTML(players(), pointsGoal(), PID);
+  }
 }
 
 function renderReveal() {
@@ -180,65 +275,31 @@ function renderReveal() {
   $("leftR").textContent = q.left;
   $("rightR").textContent = q.right;
 
-  const sp = $("revealSpectrum");
-  sp.innerHTML = "";
-  Object.entries(r.guesses || {}).forEach(([id, g]) => {
-    const p = players()[id];
-    if (!p) return;
-    sp.insertAdjacentHTML("beforeend",
-      `<img class="token" style="left:${g.value * 100}%" src="${avatarDataURI(p.color, p.face)}"
-            alt="${escapeHTML(p.name)}" title="${escapeHTML(p.name)}" />`);
-  });
-  const spPlayer = players()[r.spotlight];
-  const spName = spPlayer?.name || "?";
-  sp.insertAdjacentHTML("beforeend",
-    `<span class="token token--answer" style="left:${r.answer * 100}%">
-       <img class="avatar" style="width:100%;height:100%;" src="${avatarDataURI(spPlayer?.color ?? 0, spPlayer?.face ?? 0)}" alt="" />
-       <span class="token-tag">${escapeHTML(spName)}'s answer</span>
-     </span>`);
+  // personal "you earned" banner
+  $("myEarnBanner").innerHTML = myEarnHTML(r);
 
-  const rows = Object.entries(r.guesses || {})
-    .sort((a, b) => b[1].points - a[1].points)
-    .map(([id, g]) => {
-      const p = players()[id];
-      if (!p) return "";
-      return `<div class="result-row">
-        <img class="avatar" src="${avatarDataURI(p.color, p.face)}" alt="" />
-        <span class="name">${escapeHTML(p.name)}</span>
-        <span class="earn ${g.points >= 75 ? "earn--hit" : g.points === 0 ? "earn--0" : ""}">+${g.points}</span>
-      </div>`;
-    }).join("");
-  const bonusRow = `<div class="result-row">
-      <img class="avatar" src="${avatarDataURI(spPlayer?.color ?? 0, spPlayer?.face ?? 0)}" alt="" />
-      <span class="name">${escapeHTML(spName)} — friends who really know them</span>
-      <span class="earn ${r.spotlightBonus ? "earn--hit" : "earn--0"}">+${r.spotlightBonus}</span>
-    </div>`;
-  $("revealResults").innerHTML = rows + bonusRow +
-    `<h3 class="mt center">Standings · first to ${pointsGoal()} wins</h3><div id="revealStandings"></div>`;
-  renderStandings("revealStandings");
-
+  $("revealSpectrum").innerHTML = revealSpectrumHTML(r, players());
+  $("revealResults").innerHTML = resultRowsHTML(r, players(), PID);
+  $("standingsHeadR").textContent = `Standings · first to ${pointsGoal()} wins`;
+  $("revealStandings").innerHTML = standingsHTML(players(), pointsGoal(), PID);
   $("nextRoundBtn").textContent = gameOverNext() ? "See final results" : "Next round";
 }
 
-function renderStandings(containerId) {
-  const goal = pointsGoal();
-  const ranked = playerIds()
-    .map((id) => players()[id])
-    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
-  $(containerId).innerHTML = ranked.map((p, i) => `
-    <div class="standing ${i === 0 ? "standing--first" : ""}">
-      <span class="rank">${i + 1}</span>
-      <img class="avatar" src="${avatarDataURI(p.color, p.face)}" alt="" />
-      <span>${escapeHTML(p.name)}${(p.score ?? 0) >= goal ? " 🎯" : ""}</span>
-      <span class="score">${p.score ?? 0}</span>
-    </div>`).join("");
+function myEarnHTML(r) {
+  if (r.spotlight === PID) {
+    return `<div class="big-points">+${r.spotlightBonus}</div>
+      <p style="font-weight:800;margin:0;">${r.spotlightBonus > 0 ? "Your friends really know you! 🎯" : "Nobody guessed close — you're a mystery!"}</p>`;
+  }
+  const g = r.guesses?.[PID];
+  const pts = g ? g.points : 0;
+  return `<div class="big-points">+${pts}</div>
+    <p style="font-weight:800;margin:0;">${pts >= 75 ? "Bullseye! You really know them 🎯" : pts > 0 ? "Not bad!" : "Oof — way off this time!"}</p>`;
 }
 
-// ---------- referee: automatic transitions ----------
+// ---------- referee ----------
 async function referee() {
-  if (busy) return;
+  if (busy || !PID) return;
 
-  // spotlight player left mid-round — move on without them
   if ((room.state === "answering" || room.state === "guessing") && !players()[room.spotlight]) {
     busy = true;
     try {
@@ -261,9 +322,7 @@ async function referee() {
   if (room.state === "guessing") {
     const guessers = connectedIds().filter((id) => id !== room.spotlight);
     const got = Object.keys(room.answers?.guesses || {});
-    if (guessers.length > 0 && guessers.every((id) => got.includes(id))) {
-      await doReveal();
-    }
+    if (guessers.length > 0 && guessers.every((id) => got.includes(id))) await doReveal();
   }
 }
 
@@ -277,7 +336,6 @@ async function doReveal() {
     const guesses = {};
     let hits = 0;
     const updates = {};
-
     for (const [id, value] of Object.entries(rawGuesses)) {
       if (id === room.spotlight || !players()[id]) continue;
       const points = scoreGuess(Math.abs(value - answer));
@@ -286,24 +344,15 @@ async function doReveal() {
       updates[`players/${id}/score`] = (players()[id].score ?? 0) + points;
     }
     const spotlightBonus = hits * SPOTLIGHT_BONUS_PER_HIT;
-    updates[`players/${room.spotlight}/score`] =
-      (players()[room.spotlight].score ?? 0) + spotlightBonus;
-
-    updates["lastResult"] = {
-      round: room.round, qIndex: room.qIndex, spotlight: room.spotlight,
-      answer, guesses, spotlightBonus,
-    };
+    updates[`players/${room.spotlight}/score`] = (players()[room.spotlight].score ?? 0) + spotlightBonus;
+    updates["lastResult"] = { round: room.round, qIndex: room.qIndex, spotlight: room.spotlight, answer, guesses, spotlightBonus };
     updates["state"] = "reveal";
     await update(roomRef(CODE), updates);
-  } finally {
-    busy = false;
-  }
+  } finally { busy = false; }
 }
 
 // ---------- round control ----------
-// Spotlight cycles through the shuffled order, repeating if rounds > players
 async function startRound(round, order, usedQ) {
-  // pick the next spotlight, skipping anyone who has left the room
   let spot = null;
   for (let i = 0; i < order.length; i++) {
     const cand = order[(round - 1 + i) % order.length];
@@ -312,17 +361,27 @@ async function startRound(round, order, usedQ) {
   if (!spot) { await update(roomRef(CODE), { state: "lobby", round: 0 }); return; }
   const qIndex = pickQuestion(usedQ);
   await update(roomRef(CODE), {
-    state: "answering",
-    round,
-    order,
-    spotlight: spot,
-    qIndex,
-    usedQ: [...usedQ, qIndex],
-    answers: null,
+    state: "answering", round, order, spotlight: spot, qIndex,
+    usedQ: [...usedQ, qIndex], answers: null,
   });
 }
 
-// settings sliders
+// ---------- host's own answer/guess ----------
+$("lockA").addEventListener("click", async () => {
+  if (room.state !== "answering" || room.spotlight !== PID || lockedRound === room.round) return;
+  unlockAudio(); sfx.lock();
+  lockedRound = room.round;
+  await set(roomRef(CODE, "answers/spotlight"), Number($("sliderA").value) / 100);
+});
+
+$("lockG").addEventListener("click", async () => {
+  if (room.state !== "guessing" || room.spotlight === PID || lockedRound === room.round) return;
+  unlockAudio(); sfx.lock();
+  lockedRound = room.round;
+  await set(roomRef(CODE, `answers/guesses/${PID}`), Number($("sliderG").value) / 100);
+});
+
+// ---------- settings + controls ----------
 const roundsSlider = $("roundsSlider");
 const goalSlider = $("goalSlider");
 roundsSlider.addEventListener("input", () => { $("roundsOut").textContent = roundsSlider.value; });
@@ -331,26 +390,18 @@ goalSlider.addEventListener("input", () => { $("goalOut").textContent = goalSlid
 $("startBtn").addEventListener("click", async () => {
   unlockAudio();
   const order = shuffle(connectedIds());
-  await update(roomRef(CODE), {
-    settings: { rounds: Number(roundsSlider.value), goal: Number(goalSlider.value) },
-  });
+  await update(roomRef(CODE), { settings: { rounds: Number(roundsSlider.value), goal: Number(goalSlider.value) } });
   await startRound(1, order, room.usedQ || []);
 });
 
 $("nextRoundBtn").addEventListener("click", async () => {
-  if (gameOverNext()) {
-    await update(roomRef(CODE), { state: "final" });
-  } else {
-    await startRound(room.round + 1, room.order, room.usedQ || []);
-  }
+  if (gameOverNext()) await update(roomRef(CODE), { state: "final" });
+  else await startRound(room.round + 1, room.order, room.usedQ || []);
 });
 
 $("skipSpotlightBtn").addEventListener("click", async () => {
-  if (room.round >= totalRounds()) {
-    await update(roomRef(CODE), { state: "final" });
-  } else {
-    await startRound(room.round + 1, room.order, room.usedQ || []);
-  }
+  if (room.round >= totalRounds()) await update(roomRef(CODE), { state: "final" });
+  else await startRound(room.round + 1, room.order, room.usedQ || []);
 });
 
 $("revealNowBtn").addEventListener("click", doReveal);
@@ -361,21 +412,12 @@ $("playAgainBtn").addEventListener("click", async () => {
   await update(roomRef(CODE), updates);
 });
 
-// kick a player from the lobby
 $("lobbyPlayers").addEventListener("click", async (e) => {
   const b = e.target.closest(".kick");
   if (!b) return;
   await remove(roomRef(CODE, `players/${b.dataset.pid}`));
 });
 
-// host joins the game as a player in a second tab
-$("hostJoinBtn").addEventListener("click", () => {
-  unlockAudio();
-  window.open(`index.html?code=${CODE}`, "_blank");
-});
-
-// home button: warn if a game is running (the room stays alive; this tab can
-// rejoin it this session via Host a game, or any time via host.html?code=XXXX)
 $("hostHomeBtn").addEventListener("click", (e) => {
   const inGame = room && room.state !== "lobby" && room.state !== "final";
   if (inGame && !confirm("Go home? The game will pause until you reopen this room (host.html?code=" + CODE + ").")) {
@@ -383,7 +425,6 @@ $("hostHomeBtn").addEventListener("click", (e) => {
   }
 });
 
-// mute toggle
 $("muteBtn").addEventListener("click", () => {
   setMuted(!isMuted());
   $("muteBtn").textContent = isMuted() ? "🔇" : "🔊";

@@ -15,14 +15,25 @@
   <main class="wrap">
     <h1 class="logo">Do You <span class="tilt">Know</span> Me?!</h1>
 
+    <!-- HOST SETUP: pick name + character before creating the room -->
+    <section id="view-setup" class="hidden">
+      <div class="card">
+        <h2 class="center">You're hosting! Set up your player</h2>
+        <label for="hostName">Your name</label>
+        <input type="text" id="hostName" maxlength="12" autocomplete="off" placeholder="e.g. Sam" />
+        <label>Pick your character</label>
+        <div class="icon-grid" id="hostIconGrid"></div>
+        <div class="btn-row mt">
+          <button class="btn btn--coral btn--big" id="createBtn">Create the room</button>
+        </div>
+      </div>
+    </section>
+
     <!-- LOBBY -->
     <section id="view-lobby" class="hidden">
       <div class="center">
         <div class="room-code" id="roomCode">····</div>
-        <p class="join-hint">Join in any browser at <strong id="joinURL"></strong> with this code</p>
-        <div class="mt">
-          <button class="btn btn--aqua" id="hostJoinBtn">I'm playing too — open my controller</button>
-        </div>
+        <p class="join-hint">Others join in any browser at <strong id="joinURL"></strong> with this code</p>
       </div>
       <div class="card">
         <h2 class="center">Who's here <span id="playerCount"></span></h2>
@@ -51,7 +62,12 @@
         <div class="mt" id="spotlightIntroA"></div>
         <h2 class="question" id="questionA"></h2>
         <div class="spectrum-labels"><span id="leftA"></span><span id="rightA"></span></div>
-        <div class="spectrum"></div>
+        <!-- host's own slider appears here if the host is the spotlight -->
+        <div id="hostSliderA" class="hidden">
+          <input type="range" class="guess" id="sliderA" min="0" max="100" value="50" aria-label="Your answer" />
+          <div class="btn-row mt"><button class="btn btn--coral btn--big" id="lockA">Lock in my answer</button></div>
+        </div>
+        <div id="hostSpectrumA"><div class="spectrum"></div></div>
         <p class="status" style="color: var(--ink-soft);" id="answerWait"></p>
         <div class="btn-row">
           <button class="btn btn--ghost" id="skipSpotlightBtn">Skip this player</button>
@@ -66,7 +82,12 @@
         <span class="pill" id="roundPillG"></span>
         <h2 class="question" id="questionG"></h2>
         <div class="spectrum-labels"><span id="leftG"></span><span id="rightG"></span></div>
-        <div class="spectrum"></div>
+        <!-- host's own guess slider if host is not the spotlight -->
+        <div id="hostSliderG" class="hidden">
+          <input type="range" class="guess" id="sliderG" min="0" max="100" value="50" aria-label="Your guess" />
+          <div class="btn-row mt"><button class="btn btn--coral btn--big" id="lockG">Lock in my guess</button></div>
+        </div>
+        <div id="hostSpectrumG"><div class="spectrum"></div></div>
         <p class="status" style="color: var(--ink-soft);" id="guessProgress"></p>
         <div class="btn-row">
           <button class="btn" id="revealNowBtn">Reveal now</button>
@@ -75,16 +96,19 @@
       <div class="player-grid" id="scoreboardG"></div>
     </section>
 
-    <!-- REVEAL -->
+    <!-- REVEAL (full results for everyone) -->
     <section id="view-reveal" class="hidden">
       <div class="card card--stage">
         <span class="pill" id="roundPillR"></span>
         <h2 class="question" id="questionR"></h2>
+        <div id="myEarnBanner" class="my-earn"></div>
         <div class="spectrum-block">
           <div class="spectrum-labels"><span id="leftR"></span><span id="rightR"></span></div>
           <div class="spectrum" id="revealSpectrum" style="height: 34px;"></div>
         </div>
         <div id="revealResults" class="mt" style="text-align:left;"></div>
+        <h3 class="mt center" id="standingsHeadR"></h3>
+        <div id="revealStandings" style="text-align:left;"></div>
         <div class="btn-row mt">
           <button class="btn btn--coral btn--big" id="nextRoundBtn">Next round</button>
         </div>

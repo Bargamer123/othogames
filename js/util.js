@@ -80,3 +80,58 @@ export function escapeHTML(s) {
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
   }[m]));
 }
+
+
+// ============================================================
+// Shared result-screen builders (used by host AND player pages
+// so everyone sees the same reveal).
+// ============================================================
+
+export function revealSpectrumHTML(result, playersMap) {
+  let html = "";
+  for (const [id, g] of Object.entries(result.guesses || {})) {
+    const p = playersMap?.[id];
+    if (!p || !p.name) continue;
+    html += `<img class="token" style="left:${g.value * 100}%" src="${avatarDataURI(p.color, p.face)}"
+      alt="${escapeHTML(p.name)}" title="${escapeHTML(p.name)}" />`;
+  }
+  const sp = playersMap?.[result.spotlight];
+  html += `<span class="token token--answer" style="left:${result.answer * 100}%">
+      <img class="avatar" style="width:100%;height:100%;" src="${avatarDataURI(sp?.color ?? 0, sp?.face ?? 0)}" alt="" />
+      <span class="token-tag">${escapeHTML(sp?.name || "?")}'s answer</span>
+    </span>`;
+  return html;
+}
+
+export function resultRowsHTML(result, playersMap, highlightPid = null) {
+  const rows = Object.entries(result.guesses || {})
+    .sort((a, b) => b[1].points - a[1].points)
+    .map(([id, g]) => {
+      const p = playersMap?.[id];
+      if (!p || !p.name) return "";
+      return `<div class="result-row ${id === highlightPid ? "result-row--me" : ""}">
+        <img class="avatar" src="${avatarDataURI(p.color, p.face)}" alt="" />
+        <span class="name">${escapeHTML(p.name)}${id === highlightPid ? " (you)" : ""}</span>
+        <span class="earn ${g.points >= 75 ? "earn--hit" : g.points === 0 ? "earn--0" : ""}">+${g.points}</span>
+      </div>`;
+    }).join("");
+  const sp = playersMap?.[result.spotlight];
+  const bonusRow = `<div class="result-row ${result.spotlight === highlightPid ? "result-row--me" : ""}">
+      <img class="avatar" src="${avatarDataURI(sp?.color ?? 0, sp?.face ?? 0)}" alt="" />
+      <span class="name">${escapeHTML(sp?.name || "?")}${result.spotlight === highlightPid ? " (you)" : ""} — friends who really know them</span>
+      <span class="earn ${result.spotlightBonus ? "earn--hit" : "earn--0"}">+${result.spotlightBonus}</span>
+    </div>`;
+  return rows + bonusRow;
+}
+
+export function standingsHTML(playersMap, goal = Infinity, highlightPid = null) {
+  const entries = Object.entries(playersMap || {}).filter(([, p]) => p && p.name);
+  const ranked = entries.sort((a, b) => (b[1].score ?? 0) - (a[1].score ?? 0));
+  return ranked.map(([id, p], i) => `
+    <div class="standing ${i === 0 ? "standing--first" : ""} ${id === highlightPid ? "standing--me" : ""}">
+      <span class="rank">${i + 1}</span>
+      <img class="avatar" src="${avatarDataURI(p.color, p.face)}" alt="" />
+      <span>${escapeHTML(p.name)}${id === highlightPid ? " (you)" : ""}${(p.score ?? 0) >= goal ? " 🎯" : ""}</span>
+      <span class="score">${p.score ?? 0}</span>
+    </div>`).join("");
+}
