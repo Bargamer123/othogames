@@ -1,8 +1,5 @@
 // ============================================================
-// Firebase setup.
-// >>> PASTE YOUR CONFIG BELOW — replace the whole object. <<<
-// Get it from: Firebase console → Project settings (gear icon)
-// → Your apps → SDK setup and configuration → Config
+// Firebase setup — configured for randomgames-72fea
 // This config is safe to publish; security lives in your
 // database rules, not in hiding these values.
 // ============================================================
@@ -14,13 +11,14 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
 const firebaseConfig = {
-  apiKey: "PASTE_YOUR_API_KEY",
-  authDomain: "PASTE_YOUR_PROJECT.firebaseapp.com",
-  databaseURL: "https://PASTE_YOUR_PROJECT-default-rtdb.firebaseio.com",
-  projectId: "PASTE_YOUR_PROJECT",
-  storageBucket: "PASTE_YOUR_PROJECT.appspot.com",
-  messagingSenderId: "000000000000",
-  appId: "1:000000000000:web:0000000000000000000000",
+  apiKey: "AIzaSyAYZpfzGiUBNz0jEIgtNaGXMX42pNxB_7M",
+  authDomain: "randomgames-72fea.firebaseapp.com",
+  databaseURL: "https://randomgames-72fea-default-rtdb.firebaseio.com",
+  projectId: "randomgames-72fea",
+  storageBucket: "randomgames-72fea.firebasestorage.app",
+  messagingSenderId: "547358741664",
+  appId: "1:547358741664:web:60e2fb586f742a2f6c65c5",
+  measurementId: "G-8LMVLY610S"
 };
 
 export const configLooksReal =
