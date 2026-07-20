@@ -6,14 +6,14 @@
 
 import {
   db, roomRef, ref, set, get, update, onValue, onDisconnect, remove, warnIfUnconfigured,
-} from "./firebase.js?v=4";
-import { QUESTIONS } from "./questions.js?v=4";
+} from "./firebase.js?v=5";
+import { QUESTIONS } from "./questions.js?v=5";
 import {
   avatarDataURI, PLAYER_COLORS, FACES, randomCode, scoreGuess,
   SPOTLIGHT_BONUS_PER_HIT, escapeHTML,
   revealSpectrumHTML, resultRowsHTML, standingsHTML,
-} from "./util.js?v=4";
-import { sfx, setMuted, isMuted, unlockAudio } from "./sounds.js?v=4";
+} from "./util.js?v=5";
+import { sfx, setMuted, isMuted, unlockAudio } from "./sounds.js?v=5";
 
 if (warnIfUnconfigured()) throw new Error("Firebase not configured");
 

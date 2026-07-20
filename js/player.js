@@ -6,13 +6,13 @@
 
 import {
   roomRef, get, set, update, onValue, onDisconnect, remove, warnIfUnconfigured,
-} from "./firebase.js?v=4";
-import { QUESTIONS } from "./questions.js?v=4";
+} from "./firebase.js?v=5";
+import { QUESTIONS } from "./questions.js?v=5";
 import {
   avatarDataURI, PLAYER_COLORS, FACES, escapeHTML,
   revealSpectrumHTML, resultRowsHTML, standingsHTML,
-} from "./util.js?v=4";
-import { sfx, unlockAudio } from "./sounds.js?v=4";
+} from "./util.js?v=5";
+import { sfx, unlockAudio } from "./sounds.js?v=5";
 
 if (warnIfUnconfigured()) throw new Error("Firebase not configured");
 
